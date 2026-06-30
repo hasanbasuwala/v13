@@ -1,4 +1,5 @@
 # core/security/headers.py
+from typing import Dict
 import random
 import config
 

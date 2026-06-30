@@ -18,9 +18,9 @@ async def download_primary(job: Job) -> bool:
     # Clean the quality variable to match yt-dlp sorting
     fmt = 'bestvideo+bestaudio/best' if job.quality == 'best' else f'bestvideo[height<={job.quality}]+bestaudio/best[height<={job.quality}]'
     
-    # FIX: Wrap the fingerprint in the ImpersonateTarget object required by the Python API
-    client_str = f"{target['browser']}:{target['version']}"
-    impersonate_obj = ImpersonateTarget(client=client_str, os=target['os'])
+    # FIX: ARM64 curl_cffi compatibility. 
+    # By passing just the browser name, we let curl_cffi pick the best supported signature.
+    impersonate_obj = ImpersonateTarget(client=target['browser'])
     
     ydl_opts = {
         'outtmpl': str(job.work_dir / f"{job.job_id}.%(ext)s"),
@@ -44,6 +44,4 @@ async def download_primary(job: Job) -> bool:
 async def download_alt(job: Job) -> bool:
     """Alternative yt-dlp fallback (e.g., using different extractors or bypassing auth)."""
     write_trace(job.work_dir, "[YT-DLP] Spawning alternative fallback engine...")
-    # Intentionally raising an error to demonstrate how the Manager catches it 
-    # and automatically falls back to Attempt 3 in the waterfall.
     raise NotImplementedError("Alternative strategy intentionally failed for waterfall testing.")

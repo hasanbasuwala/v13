@@ -1,6 +1,7 @@
 # core/downloader/engines/ytdlp.py
 import asyncio
 from yt_dlp import YoutubeDL
+from yt_dlp.networking.impersonate import ImpersonateTarget
 from core.state.models import Job
 from core.state.persistence import write_trace
 from core.security.fingerprints import get_random_target
@@ -14,8 +15,12 @@ async def download_primary(job: Job) -> bool:
     target = get_random_target()
     headers = generate_headers()
     
-    # Clean the quality variable to match yt-dlp sorting (e.g., "1080" or "720")
+    # Clean the quality variable to match yt-dlp sorting
     fmt = 'bestvideo+bestaudio/best' if job.quality == 'best' else f'bestvideo[height<={job.quality}]+bestaudio/best[height<={job.quality}]'
+    
+    # FIX: Wrap the fingerprint in the ImpersonateTarget object required by the Python API
+    client_str = f"{target['browser']}:{target['version']}"
+    impersonate_obj = ImpersonateTarget(client=client_str, os=target['os'])
     
     ydl_opts = {
         'outtmpl': str(job.work_dir / f"{job.job_id}.%(ext)s"),
@@ -23,7 +28,7 @@ async def download_primary(job: Job) -> bool:
         'quiet': True,
         'no_warnings': True,
         'http_headers': headers,
-        'impersonate': f"{target['browser']}:{target['version']}"
+        'impersonate': impersonate_obj
     }
     
     # 2. Execute blocking call safely inside an async executor thread

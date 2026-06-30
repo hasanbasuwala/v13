@@ -1,0 +1,21 @@
+# Runtime environments & caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Stealth Bot Local Storage
+SysCache/
+*.session
+*.session-journal
+
+# Secrets & Local Configs
+config.py
+credentials/
+*.json
+!core/**/*.json
+
+# System / OS files
+.DS_Store
+Thumbs.db

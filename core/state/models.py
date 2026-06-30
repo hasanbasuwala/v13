@@ -7,7 +7,9 @@ class Stage(Enum):
     QUEUED = "queued"
     RESOLVING = "resolving"
     DOWNLOADING = "downloading"
+    DOWNLOADED = "downloaded"   # <-- Added for Encode Queue waiting
     ENCODING = "encoding"
+    ENCODED = "encoded"         # <-- Added for Upload Queue waiting
     UPLOADING = "uploading"
     DONE = "done"
     FAILED = "failed"

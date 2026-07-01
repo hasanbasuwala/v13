@@ -21,5 +21,6 @@ class Job:
     url: str
     stage: Stage = Stage.QUEUED
     work_dir: Path = None
-    title: str = "Untitled"          # Added this field
-    tags: List[str] = field(default_factory=list) # Added this field
+    title: str = "Untitled"
+    display_title: str = "Untitled" # Added this missing field
+    tags: List[str] = field(default_factory=list)

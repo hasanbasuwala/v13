@@ -19,21 +19,30 @@ async def update_job_card(app: Client, job: Job, status_text: str):
             text=card_text
         )
     except Exception:
-        # Fails silently if the text hasn't changed or we hit a rate limit
         pass
 
-async def send_final_log(app: Client, job: Job, final_status: str):
-    """Sends the trace.log document to the bot owner for diagnosis."""
+async def send_failure_log(app: Client, job: Job, error_stage: str):
+    """Automatically sends the trace.log to the user when a job fails."""
     if not job.ui_chat_id:
         return
         
+    await update_job_card(app, job, f"Failed ❌ ({error_stage})")
+    
     log_file = job.work_dir / "trace.log"
     if log_file.exists():
         try:
             await app.send_document(
                 chat_id=job.ui_chat_id,
                 document=str(log_file),
-                caption=f"{final_status} Log for `{job.job_id}`\n**{job.title or 'No Title'}**"
+                caption=f"⚠️ **Job Failed:** `{job.job_id}`\nFailed during: `{error_stage}`"
+            )
+        except Exception as e:
+            print(f"Could not send log document: {e}")
+    else:
+        try:
+            await app.send_message(
+                chat_id=job.ui_chat_id,
+                text=f"⚠️ **Job Failed:** `{job.job_id}`\n*(No trace.log was found on disk)*"
             )
         except Exception:
             pass

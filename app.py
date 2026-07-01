@@ -102,12 +102,12 @@ async def main():
     # -> Heartbeat (State saving every 60s)
     asyncio.create_task(registry_heartbeat(CACHE_DIR))
     
-    # -> Worker Pool (Passing 'app' client to resolve previous TypeError)
+    # -> Worker Pool (FIX APPLIED: Passed download_queue first, then app)
     for _ in range(3): # 3 Parallel Download workers
-        asyncio.create_task(download_worker(app, download_queue))
+        asyncio.create_task(download_worker(download_queue, app))
         
-    # asyncio.create_task(encode_worker(app, encode_queue))
-    # asyncio.create_task(upload_worker(app, upload_queue))
+    # asyncio.create_task(encode_worker(encode_queue, app))
+    # asyncio.create_task(upload_worker(upload_queue, app))
         
     log_stealth(f"[🛡️] STEALTH_BOT_V13.1 | ENGINE: ONLINE | QUEUE: 0", new_line=True)
     

@@ -9,11 +9,19 @@ from core.encoder.transcode import safe_remux
 from core.encoder.thumbnail import generate_thumbnail
 from core.encoder.detect import needs_remux
 
+# Import commands to access the BOT_PAUSED flag
+from core.handlers import commands
+
 async def encode_worker(worker_id: int) -> None:
     """Background worker that smartly processes or bypasses FFmpeg."""
     print(f"🎬 Encode Worker {worker_id} online...")
     
     while True:
+        # Respect the /stop command
+        if commands.BOT_PAUSED:
+            await asyncio.sleep(2)
+            continue
+            
         job: Job = await encode_queue.get()
         transition_stage(job, Stage.ENCODING)
         
@@ -26,10 +34,8 @@ async def encode_worker(worker_id: int) -> None:
             output_file = job.work_dir / f"{job.job_id}_enc.mp4"
             thumb_file = job.work_dir / f"{job.job_id}_thumb.jpg"
             
-            # Extract Thumbnail regardless
             await generate_thumbnail(job, input_file, thumb_file)
             
-            # SMART DETECT: Skip remux if it's already a healthy MP4
             if not needs_remux(input_file):
                 write_trace(job.work_dir, "[ENCODER] ⚡ File is already MP4. Bypassing FFmpeg remux.")
                 shutil.move(str(input_file), str(output_file))

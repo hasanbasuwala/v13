@@ -1,33 +1,84 @@
-# core/downloader/manager.py
-import traceback
-import config
-from core.state.models import Job
-from core.state.persistence import write_trace
-from core.pipeline.classifier import classify
-from core.pipeline.retry import get_strategy
-from core.downloader.strategy import execute_strategy
+import asyncio
+import logging
 
-async def process_download(job: Job) -> bool:
-    """Orchestrates the 6-stage fallback waterfall for a media asset."""
-    classification = classify(job.url)
-    write_trace(job.work_dir, f"[DOWNLOAD-MANAGER] URL classified as: {classification}")
+from core.downloader.strategy import DownloadStrategy
 
-    for attempt in range(1, config.MAX_RETRIES + 1):
-        strategy_name = get_strategy(classification, attempt)
-        
-        if strategy_name == "pipeline_failure":
-            write_trace(job.work_dir, "[DOWNLOAD-MANAGER] ❌ All download strategies exhausted.")
-            return False
-        
-        write_trace(job.work_dir, f"[DOWNLOAD-MANAGER] Attempt {attempt} -> Routing to {strategy_name}")
-        
-        try:
-            success = await execute_strategy(strategy_name, job)
-            if success:
-                write_trace(job.work_dir, f"[DOWNLOAD-MANAGER] ✅ {strategy_name} completed successfully.")
-                return True
-        except Exception as e:
-            write_trace(job.work_dir, f"[DOWNLOAD-MANAGER] ⚠️ {strategy_name} failed: {str(e)}")
-            write_trace(job.work_dir, traceback.format_exc())
-            
-    return False
+from core.downloader.engines.ytdlp_engine import (
+    YTDLPDownloader
+)
+
+from core.downloader.engines.playwright_engine import (
+    PlaywrightDownloader
+)
+
+from core.downloader.engines.http_engine import (
+    HTTPDownloader
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+class DownloaderManager:
+
+    MAX_RETRIES = 4
+
+    ENGINE_MAP = {
+
+        "ytdlp": YTDLPDownloader,
+
+        "playwright": PlaywrightDownloader,
+
+        "http": HTTPDownloader
+    }
+
+    @classmethod
+    async def download(cls, job):
+
+        engines = DownloadStrategy.choose(
+            job.url
+        )
+
+        for attempt in range(
+
+            cls.MAX_RETRIES
+        ):
+
+            for engine_name in engines:
+
+                try:
+
+                    logger.info(
+
+                        f"{engine_name} attempt "
+                        f"{attempt+1}"
+                    )
+
+                    engine = cls.ENGINE_MAP[
+                        engine_name
+                    ]
+
+                    success = await engine.download(
+                        job
+                    )
+
+                    if success:
+                        return True
+
+                except Exception as e:
+
+                    logger.warning(
+
+                        f"{engine_name} failed {e}"
+                    )
+
+            delay = 2 ** attempt
+
+            logger.warning(
+
+                f"Retry in {delay}s"
+            )
+
+            await asyncio.sleep(delay)
+
+        return False

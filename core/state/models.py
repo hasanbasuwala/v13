@@ -1,7 +1,8 @@
 # core/state/models.py
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import List
 
 class Stage(Enum):
     QUEUED = "queued"
@@ -20,3 +21,5 @@ class Job:
     url: str
     stage: Stage = Stage.QUEUED
     work_dir: Path = None
+    title: str = "Untitled"          # Added this field
+    tags: List[str] = field(default_factory=list) # Added this field

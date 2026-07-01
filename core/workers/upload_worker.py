@@ -1,49 +1,101 @@
-# core/workers/upload_worker.py
 import asyncio
-from pyrogram import Client
-from core.state.queues import upload_queue
-from core.state.models import Job, Stage
-from core.state.persistence import write_trace
-from core.pipeline.manager import transition_stage
-from core.uploader.telegram import upload_video
-from core.handlers import commands
-from core.ui.notifications import update_job_card, send_failure_log
+import logging
 
-async def upload_worker(app: Client, worker_id: int) -> None:
-    print(f"🚀 Upload Worker {worker_id} online...")
-    
-    while True:
-        if commands.BOT_PAUSED:
-            await asyncio.sleep(2)
-            continue
-            
-        job: Job = await upload_queue.get()
-        write_trace(job.work_dir, f"[WORKER-UP-{worker_id}] Picked up job.")
-        transition_stage(job, Stage.UPLOADING)
-        await update_job_card(app, job, "Uploading to Telegram... 📤")
-        
+from pyrogram.errors import FloodWait
+
+from core.state.queues import queues
+from core.state.registry import registry
+from core.state.models import JobStage
+
+
+logger = logging.getLogger(__name__)
+
+
+async def safe_upload(app, job):
+
+    for attempt in range(5):
+
         try:
-            enc_file = job.work_dir / f"{job.job_id}_enc.mp4"
-            thumb_file = job.work_dir / f"{job.job_id}_thumb.jpg"
-            
-            if not enc_file.exists():
-                raise FileNotFoundError("Encoded MP4 is missing from the working directory.")
-                
-            success = await upload_video(app, job, enc_file, thumb_file)
-            
-            if success:
-                write_trace(job.work_dir, f"[WORKER-UP-{worker_id}] ✅ Job fully completed!")
-                transition_stage(job, Stage.DONE)
-                await update_job_card(app, job, "Done ✅")
-            else:
-                write_trace(job.work_dir, f"[WORKER-UP-{worker_id}] ❌ Upload exhausted/failed.")
-                transition_stage(job, Stage.FAILED)
-                await send_failure_log(app, job, "Telegram Upload Failed")
-                
+
+            await app.send_video(
+
+                chat_id=job.user_id,
+
+                video=str(
+                    job.output_file
+                )
+            )
+
+            return True
+
+        except FloodWait as e:
+
+            logger.warning(
+                f"Flood wait {e.value}"
+            )
+
+            await asyncio.sleep(
+                e.value
+            )
+
+        except Exception:
+
+            await asyncio.sleep(10)
+
+    return False
+
+
+async def upload_worker(app):
+
+    logger.info("Upload worker started")
+
+    while True:
+
+        job = await queues.upload_queue.get()
+
+        try:
+
+            await registry.update_stage(
+                job.job_id,
+                JobStage.UPLOADING
+            )
+
+            success = await safe_upload(
+                app,
+                job
+            )
+
+            if not success:
+
+                raise Exception(
+                    "Upload failed"
+                )
+
+            await registry.update_stage(
+                job.job_id,
+                JobStage.COMPLETED
+            )
+
+            logger.info(
+                f"Upload complete {job.job_id}"
+            )
+
         except Exception as e:
-            write_trace(job.work_dir, f"[WORKER-UP-{worker_id}] Critical crash: {e}")
-            transition_stage(job, Stage.FAILED)
-            await send_failure_log(app, job, "Uploader Worker Crash")
-            
+
+            logger.exception(
+                f"Upload failed {job.job_id}"
+            )
+
+            await registry.set_error(
+                job.job_id,
+                str(e)
+            )
+
+            await registry.update_stage(
+                job.job_id,
+                JobStage.FAILED
+            )
+
         finally:
-            upload_queue.task_done()
+
+            queues.upload_queue.task_done()

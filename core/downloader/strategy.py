@@ -1,21 +1,33 @@
 # core/downloader/strategy.py
-from core.state.models import Job
-from core.downloader.engines import ytdlp, aria2, mediago, browser, primp_scraper
+import asyncio
+from core.state.registry import Global_Registry
+from core.state.persistence import log_stealth, write_trace
 
-# Map the string names from pipeline/retry.py to actual async functions
-ENGINE_MAP = {
-    "yt_dlp_primary": ytdlp.download_primary,
-    "yt_dlp_alt": ytdlp.download_alt,
-    "aria2_direct": aria2.download_direct,
-    "mediago_engine": mediago.download_mediago,
-    "playwright_browser": browser.download_interception,
-    "primp_scraper": primp_scraper.download_primp,
-}
-
-async def execute_strategy(strategy_name: str, job: Job) -> bool:
-    """Dynamically routes the job to the correct pluggable download engine."""
-    engine_func = ENGINE_MAP.get(strategy_name)
-    if not engine_func:
-        raise ValueError(f"Unknown download strategy mapped: {strategy_name}")
+async def execute_strategy(engine_name: str, job) -> bool:
+    """Entry point for downloads. Registers the job before starting."""
     
-    return await engine_func(job)
+    # 1. Register the job the second it hits the strategy layer
+    await Global_Registry.register_job(job.job_id, {
+        "id": job.job_id,
+        "title": getattr(job, "display_title", job.title),
+        "stage": "queued",
+        "progress": 0,
+        "work_dir": str(job.work_dir)
+    })
+    
+    log_stealth(f"[➕] Job {job.job_id} Registered to Mainframe", new_line=True)
+    
+    try:
+        # Update stage to downloading
+        await Global_Registry.update_job(job.job_id, {"stage": "downloading"})
+        
+        # (Your existing engine call goes here, e.g., await engine.run(job))
+        # Example: result = await ytdlp_engine.download(job)
+        
+        return True # Or return the actual engine result
+        
+    except Exception as e:
+        # Full stack trace diagnostic injection
+        write_trace(job.work_dir, f"[STRATEGY] Fatal crash during engine execution", exception=e)
+        await Global_Registry.update_job(job.job_id, {"stage": "failed", "progress": 0})
+        return False

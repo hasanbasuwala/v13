@@ -1,5 +1,6 @@
 # core/handlers/commands.py
-import uuid
+import sys
+import os
 import urllib.parse
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -17,7 +18,22 @@ def register_commands(app: Client):
             reply_markup=build_dashboard_kb(page=0)
         )
 
-    @app.on_message(filters.text & filters.user(config.OWNER_ID) & ~filters.command(["start", "dashboard"]))
+    @app.on_message(filters.command("update") & filters.user(config.OWNER_ID))
+    async def trigger_hot_reload(client: Client, msg: Message):
+        """Signals the watchdog script via sys.exit code 5 to execute a git pull."""
+        await msg.reply_text("🔄 Preparing environment shutdown sequence. Shifting control to Watchdog...")
+        
+        # Gracefully disconnect client sessions
+        try:
+            await client.stop(block=False)
+        except Exception:
+            pass
+            
+        # Flush output streams and exit with code 5 to trigger the bash git pull
+        sys.stdout.flush()
+        os._exit(5) 
+
+    @app.on_message(filters.text & filters.user(config.OWNER_ID) & ~filters.command(["start", "dashboard", "update"]))
     async def native_link_catcher(client: Client, msg: Message):
         """Catches raw URLs pasted in chat and prompts for quality selection."""
         url = next((w for w in msg.text.split() if w.startswith("http") or w.startswith("magnet:?")), None)
@@ -26,5 +42,5 @@ def register_commands(app: Client):
 
         title_hint = msg.text.replace(url, "").strip() or urllib.parse.urlparse(url).netloc or url[:40]
         
-        # We will wire this to a confirm card shortly, but for now, let's acknowledge it:
+        # Acknowledgment of URL capture
         await msg.reply(f"🔗 **URL Caught!**\n`{url}`\n\n*(Callback routing will be connected in the next step to queue this!)*")

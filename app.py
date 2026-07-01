@@ -1,10 +1,10 @@
 import asyncio
-import os
 from pathlib import Path
 from pyrogram import Client, idle
 from pyrogram.handlers import CallbackQueryHandler
 
 # --- CORE IMPORTS ---
+from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID as ADMIN_CHAT_ID
 from core.state.registry import Global_Registry
 from core.state.persistence import log_stealth, registry_heartbeat
 from core.ui.render import generate_mainframe_dashboard
@@ -15,13 +15,6 @@ from core.ui.callbacks import handle_ui_callbacks
 from core.workers.download_worker import download_worker
 # from core.workers.encode_worker import encode_worker
 # from core.workers.upload_worker import upload_worker
-
-# --- CONFIGURATION ---
-# Replace these with your actual credentials, or set them in your environment variables
-API_ID = os.environ.get("API_ID", "YOUR_API_ID_HERE")
-API_HASH = os.environ.get("API_HASH", "YOUR_API_HASH_HERE")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789")) # <-- SET YOUR CHAT ID HERE
 
 # --- DIRECTORIES ---
 CACHE_DIR = Path("SysCache")
@@ -75,8 +68,7 @@ async def initialize_system_hub(app: Client, chat_id: int):
 async def main():
     log_stealth("[🚀] IGNITION SEQUENCE INITIATED", new_line=True)
     
-    # 1. Initialize Telegram Client
-    # We use plugins to auto-load commands like your smart parser in commands.py
+    # 1. Initialize Telegram Client using credentials from config.py
     app = Client(
         "stealth_bot",
         api_id=API_ID,
@@ -106,14 +98,14 @@ async def main():
     # -> Heartbeat (State saving every 60s)
     asyncio.create_task(registry_heartbeat(CACHE_DIR))
     
-    # -> Worker Pool (Adjust concurrency numbers here)
+    # -> Worker Pool (Passing 'app' client to resolve the previous TypeError)
     for _ in range(3): # 3 Parallel Download workers
         asyncio.create_task(download_worker(download_queue, app))
         
-    # (Uncomment these once you upgrade encode_worker and upload_worker using the Phase 3 template)
-    # for _ in range(1): # 1 Encode worker (Protects CPU)
+    # (Uncomment these once you upgrade encode_worker and upload_worker)
+    # for _ in range(1): 
     #     asyncio.create_task(encode_worker(encode_queue, app))
-    # for _ in range(1): # 1 Upload worker (Protects Telegram API limits)
+    # for _ in range(1): 
     #     asyncio.create_task(upload_worker(upload_queue, app))
         
     log_stealth(f"[🛡️] STEALTH_BOT_V13.1 | ENGINE: ONLINE | QUEUE: 0", new_line=True)

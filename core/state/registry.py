@@ -1,34 +1,47 @@
-# core/state/registry.py
 import asyncio
+from typing import Dict
+from core.state.models import Job
 
-class SystemRegistry:
+
+class JobRegistry:
+
     def __init__(self):
-        self.active_jobs = {}
-        # Using an asyncio.Lock ensures that simultaneous updates from 
-        # different workers don't corrupt the dictionary data.
+
+        self.jobs: Dict[str, Job] = {}
+
         self.lock = asyncio.Lock()
-        
-    async def register_job(self, job_id: str, job_data: dict) -> None:
-        async with self.lock:
-            self.active_jobs[job_id] = job_data
-            
-    async def update_job(self, job_id: str, updates: dict) -> None:
-        async with self.lock:
-            if job_id in self.active_jobs:
-                self.active_jobs[job_id].update(updates)
-                
-    async def get_job(self, job_id: str) -> dict:
-        async with self.lock:
-            return self.active_jobs.get(job_id)
 
-    async def get_all_jobs(self) -> dict:
-        async with self.lock:
-            return dict(self.active_jobs)
+    async def add_job(self, job: Job):
 
-    async def remove_job(self, job_id: str) -> None:
         async with self.lock:
-            if job_id in self.active_jobs:
-                del self.active_jobs[job_id]
 
-# Instantiate the single global instance
-Global_Registry = SystemRegistry()
+            self.jobs[job.job_id] = job
+
+    async def get_job(self, job_id):
+
+        async with self.lock:
+
+            return self.jobs.get(job_id)
+
+    async def update_stage(self, job_id, stage):
+
+        async with self.lock:
+
+            if job_id in self.jobs:
+                self.jobs[job_id].stage = stage
+
+    async def set_error(self, job_id, error):
+
+        async with self.lock:
+
+            if job_id in self.jobs:
+                self.jobs[job_id].last_error = str(error)
+
+    async def remove_job(self, job_id):
+
+        async with self.lock:
+
+            self.jobs.pop(job_id, None)
+
+
+registry = JobRegistry()

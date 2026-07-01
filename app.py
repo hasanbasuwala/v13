@@ -7,11 +7,10 @@ from pyrogram.handlers import CallbackQueryHandler
 from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID as ADMIN_CHAT_ID
 from core.state.registry import Global_Registry
 from core.state.persistence import log_stealth, registry_heartbeat
-from core.ui.render import generate_mainframe_dashboard
+from core.ui.dashboard import build_dashboard_text, build_dashboard_kb
 from core.ui.callbacks import handle_ui_callbacks
 
 # --- WORKER IMPORTS ---
-# Ensure these match your actual worker file structures
 from core.workers.download_worker import download_worker
 # from core.workers.encode_worker import encode_worker
 # from core.workers.upload_worker import upload_worker
@@ -46,15 +45,20 @@ async def run_resume_auditor(cache_dir: Path):
 
 async def initialize_system_hub(app: Client, chat_id: int):
     """Sends the Mainframe dashboard and pins it to the top of the chat."""
-    stats = {"downloading": 0, "waiting_proc": 0, "processing": 0, "waiting_up": 0, "uploading": 0, "disk_usage": "Scanning..."}
-    text, markup = generate_mainframe_dashboard(stats, current_filter="ROOT")
+    text = build_dashboard_text()
+    markup = build_dashboard_kb()
     
     # Send the hub message
     hub_message = await app.send_message(chat_id=chat_id, text=text, reply_markup=markup)
     
     # Pin it permanently
     try:
-        await app.pin_chat_message(chat_id=chat_id, message_id=hub_message.id, disable_notification=True)
+        await app.pin_chat_message(
+            chat_id=chat_id, 
+            message_id=hub_message.id, 
+            disable_notification=True,
+            both_sides=True  # <--- FIX FOR [400 BOT_ONESIDE_NOT_AVAIL]
+        )
         log_stealth(f"[📍] Mainframe Pinned to Chat {chat_id}", new_line=True)
     except Exception as e:
         log_stealth(f"[⚠️] Could not pin Mainframe: {e}", new_line=True)
@@ -98,15 +102,12 @@ async def main():
     # -> Heartbeat (State saving every 60s)
     asyncio.create_task(registry_heartbeat(CACHE_DIR))
     
-    # -> Worker Pool (Passing 'app' client to resolve the previous TypeError)
+    # -> Worker Pool (Passing 'app' client to resolve previous TypeError)
     for _ in range(3): # 3 Parallel Download workers
-        asyncio.create_task(download_worker(download_queue, app))
+        asyncio.create_task(download_worker(app, download_queue))
         
-    # (Uncomment these once you upgrade encode_worker and upload_worker)
-    # for _ in range(1): 
-    #     asyncio.create_task(encode_worker(encode_queue, app))
-    # for _ in range(1): 
-    #     asyncio.create_task(upload_worker(upload_queue, app))
+    # asyncio.create_task(encode_worker(app, encode_queue))
+    # asyncio.create_task(upload_worker(app, upload_queue))
         
     log_stealth(f"[🛡️] STEALTH_BOT_V13.1 | ENGINE: ONLINE | QUEUE: 0", new_line=True)
     

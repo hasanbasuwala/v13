@@ -23,14 +23,24 @@ async def download_worker(app: Client, worker_id: int) -> None:
         await update_job_card(app, job, "Downloading... ⏳")
         
         try:
-            # 1. Try yt-dlp first
-            success = await execute_strategy("yt_dlp_primary", job)
+            # 1. Try yt-dlp first (Safely wrapped in its own try/except)
+            try:
+                success = await execute_strategy("yt_dlp_primary", job)
+            except Exception as e:
+                # Catch the yt-dlp format error so it doesn't crash the whole worker!
+                write_trace(job.work_dir, f"[WORKER-DL-{worker_id}] yt-dlp engine crashed: {e}")
+                success = False
             
             # 2. If it fails, fallback to aria2 directly
             if not success:
                 write_trace(job.work_dir, f"[WORKER-DL-{worker_id}] yt-dlp failed, falling back to aria2...")
-                success = await execute_strategy("aria2_direct", job)
+                try:
+                    success = await execute_strategy("aria2_direct", job)
+                except Exception as e:
+                    write_trace(job.work_dir, f"[WORKER-DL-{worker_id}] aria2 engine crashed: {e}")
+                    success = False
             
+            # 3. Route to next stage based on outcome
             if success:
                 write_trace(job.work_dir, f"[WORKER-DL-{worker_id}] ✅ Download complete.")
                 transition_stage(job, Stage.DOWNLOADED)
@@ -42,9 +52,10 @@ async def download_worker(app: Client, worker_id: int) -> None:
                 await send_failure_log(app, job, "Download Engines Exhausted")
                 
         except Exception as e:
-            write_trace(job.work_dir, f"[WORKER-DL-{worker_id}] Critical crash: {e}")
+            # This now only catches extreme system-level errors
+            write_trace(job.work_dir, f"[WORKER-DL-{worker_id}] Critical unhandled crash: {e}")
             transition_stage(job, Stage.FAILED)
-            await send_failure_log(app, job, "Worker Crash")
+            await send_failure_log(app, job, "Worker System Crash")
             
         finally:
             download_queue.task_done()

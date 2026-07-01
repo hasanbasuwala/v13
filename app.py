@@ -1,7 +1,6 @@
 # app.py
 import asyncio
-from pyrogram import Client
-from pyrogram import idle
+from pyrogram import Client, idle
 import config
 
 # Import Handlers & UI
@@ -18,7 +17,7 @@ from core.recovery.cleaner import kill_zombie_processes
 from core.recovery.resume import recover_pending_jobs
 
 async def main():
-    print("🚀 Booting Stealth Bot v13 Architecture...")
+    print("🚀 Booting Stealth Bot v13.1 Architecture...")
 
     # 1. System Cleanup
     kill_zombie_processes()
@@ -39,6 +38,23 @@ async def main():
     # 4. Start Telegram Client
     await app.start()
     print("✅ Pyrogram Client Authenticated and Online.")
+
+    # --- HOT-RELOAD NOTIFICATION BLOCK ---
+    changelog_file = config.BASE_DIR / ".update_changelog"
+    if changelog_file.exists():
+        try:
+            raw_changes = changelog_file.read_text().strip()
+            changelog_file.unlink() # Delete immediately so it won't repeat on next reboot
+            
+            update_text = (
+                "🚀 **Stealth Bot v13.1 Update Successful!**\n"
+                "The core engine is back online and functional.\n\n"
+                "📦 **Git Changelog:**\n"
+                f"`{raw_changes}`"
+            )
+            await app.send_message(chat_id=config.TARGET_CHANNEL_ID, text=update_text)
+        except Exception as e:
+            print(f"⚠️ Failed to broadcast update notification: {e}")
 
     # 5. Recover stranded jobs from previous crashes
     await recover_pending_jobs()

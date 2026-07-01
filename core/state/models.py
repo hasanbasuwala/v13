@@ -7,9 +7,9 @@ class Stage(Enum):
     QUEUED = "queued"
     RESOLVING = "resolving"
     DOWNLOADING = "downloading"
-    DOWNLOADED = "downloaded"   # <-- Added for Encode Queue waiting
+    DOWNLOADED = "downloaded"
     ENCODING = "encoding"
-    ENCODED = "encoded"         # <-- Added for Upload Queue waiting
+    ENCODED = "encoded"
     UPLOADING = "uploading"
     DONE = "done"
     FAILED = "failed"
@@ -21,3 +21,6 @@ class Job:
     quality: str
     source: str
     work_dir: Path
+    title: str = ""          # Stores your custom #caption
+    ui_chat_id: int = 0      # Tracks the Telegram Chat ID
+    ui_msg_id: int = 0       # Tracks the Job Card Message ID

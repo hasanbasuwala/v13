@@ -1,41 +1,17 @@
-import asyncio
 import logging
-from pathlib import Path
 
 from core.state.queues import queues
 from core.state.registry import registry
 from core.state.models import JobStage
 
+from core.encoder.ffmpeg import FFmpegEncoder
+from core.encoder.thumbnail import ThumbnailGenerator
+
 
 logger = logging.getLogger(__name__)
 
 
-async def run_ffmpeg(input_file, output_file):
-
-    process = await asyncio.create_subprocess_exec(
-
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(input_file),
-
-        "-c:v",
-        "libx264",
-
-        str(output_file),
-
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-
-    await process.communicate()
-
-    return process.returncode == 0
-
-
 async def encode_worker(app):
-
-    logger.info("Encode worker started")
 
     while True:
 
@@ -48,29 +24,43 @@ async def encode_worker(app):
                 JobStage.ENCODING
             )
 
-            input_file = job.work_dir / "input.mp4"
+            input_file = (
+                job.work_dir /
+                "input.mp4"
+            )
 
             output_file = (
                 job.work_dir /
-                f"{job.job_id}_encoded.mp4"
+                "encoded.mp4"
             )
 
-            success = await run_ffmpeg(
+            thumb_file = (
+                job.work_dir /
+                "thumb.jpg"
+            )
+
+            await FFmpegEncoder.encode(
                 input_file,
                 output_file
             )
 
-            if not success:
-
-                raise Exception(
-                    "Encoding failed"
-                )
+            await ThumbnailGenerator.generate(
+                output_file,
+                thumb_file
+            )
 
             job.output_file = output_file
+
+            job.thumbnail_file = thumb_file
 
             await registry.set_output_file(
                 job.job_id,
                 output_file
+            )
+
+            await registry.set_thumbnail(
+                job.job_id,
+                thumb_file
             )
 
             await registry.update_stage(
@@ -78,18 +68,13 @@ async def encode_worker(app):
                 JobStage.ENCODED
             )
 
-            logger.info(
-                f"Encode complete {job.job_id}"
+            await queues.enqueue_upload(
+                job
             )
-
-            # send to uploader
-            await queues.enqueue_upload(job)
 
         except Exception as e:
 
-            logger.exception(
-                f"Encoding failed {job.job_id}"
-            )
+            logger.exception(e)
 
             await registry.set_error(
                 job.job_id,

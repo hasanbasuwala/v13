@@ -1,67 +1,60 @@
+# app.py (Additions to your main file)
 import asyncio
-from pyrogram import Client, idle
-import config
+from pathlib import Path
+from pyrogram import Client
+from core.state.registry import Global_Registry
+from core.state.persistence import log_stealth, registry_heartbeat
+from core.ui.render import generate_mainframe_dashboard
 
-# Import Handlers & UI
-from core.handlers.commands import register_commands
-
-# Import Workers
-from core.workers.download_worker import download_worker
-from core.workers.encode_worker import encode_worker
-from core.workers.upload_worker import upload_worker
-
-# Import Recovery Subsystem (assuming these exist in your v13 architecture)
-from core.recovery.cleaner import kill_zombie_processes
-from core.recovery.resume import recover_pending_jobs
-
-async def main():
-    print("🚀 Booting Stealth Bot v13.1 Architecture...")
-
-    # 1. System Cleanup
-    kill_zombie_processes()
-
-    # 2. Initialize Telegram Client
-    app = Client(
-        "stealth_bot_session",
-        api_id=config.API_ID,
-        api_hash=config.API_HASH,
-        bot_token=config.BOT_TOKEN,
-        workdir=str(config.BASE_DIR)
-    )
-
-    # 3. Register UI Handlers
-    register_commands(app)
-
-    # 4. Start Telegram Client
-    await app.start()
-    print("✅ Pyrogram Client Authenticated and Online.")
-
-    # 5. Recover stranded jobs from previous crashes
-    await recover_pending_jobs()
-
-    # 6. Spawn Asynchronous Background Workers
-    print("👷 Spawning Subsystem Workers...")
-    worker_tasks = [
-        asyncio.create_task(download_worker(app, worker_id=1)), # <-- Passed 'app' here
-        asyncio.create_task(encode_worker(app, worker_id=1)),   # <-- Passed 'app' here
-        asyncio.create_task(upload_worker(app, worker_id=1))    # <-- Passed 'app' here
-    ]
-
-    print("🛡️ Bot is fully operational. Awaiting links...")
+async def run_resume_auditor(cache_dir: Path):
+    """Scans the directory for orphaned jobs and registers them as PENDING or RESUMED."""
+    log_stealth("[⚙️] Running Session Reconciliation...", new_line=True)
     
-    # 7. Keep the bot running until forced to stop (Ctrl+C)
-    await idle()
+    # Example logic: Scan your job folders
+    if cache_dir.exists():
+        for job_folder in cache_dir.iterdir():
+            if job_folder.is_dir():
+                job_id = job_folder.name
+                # Register found jobs back into the mainframe as pending recovery
+                await Global_Registry.register_job(job_id, {
+                    "id": job_id,
+                    "stage": "queued", # Defaulting to queued for safety
+                    "progress": 0,
+                    "work_dir": str(job_folder)
+                })
+                log_stealth(f"[🔄] Recovered Job: {job_id}", new_line=True)
 
-    # 8. Graceful Shutdown
-    print("\n🛑 Shutting down. Cancelling workers...")
-    for task in worker_tasks:
-        task.cancel()
+async def initialize_system_hub(app: Client, chat_id: int):
+    """Sends the Mainframe dashboard and pins it to the top of the chat."""
+    stats = {"downloading": 0, "waiting_proc": 0, "processing": 0, "waiting_up": 0, "uploading": 0, "disk_usage": "Scanning..."}
     
-    await app.stop()
-    print("💤 Goodnight!")
-
-if __name__ == "__main__":
+    # Generate the root dashboard
+    text, markup = generate_mainframe_dashboard(stats, current_filter="ROOT")
+    
+    # Send the hub message
+    hub_message = await app.send_message(chat_id=chat_id, text=text, reply_markup=markup)
+    
+    # Pin it permanently
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+        await app.pin_chat_message(chat_id=chat_id, message_id=hub_message.id, disable_notification=True)
+        log_stealth(f"[📍] Mainframe Pinned to Chat {chat_id}", new_line=True)
+    except Exception as e:
+        log_stealth(f"[⚠️] Could not pin Mainframe: {e}", new_line=True)
+        
+    return hub_message.id
+
+# --- IN YOUR MAIN ASYNC FUNCTION ---
+# async def main():
+#     app = Client(...)
+#     await app.start()
+#     
+#     # 1. Run Auditor
+#     await run_resume_auditor(Path("SysCache/jobs"))
+#     
+#     # 2. Pin Mainframe (Replace 'YOUR_CHAT_ID' with your actual Telegram User ID)
+#     await initialize_system_hub(app, YOUR_CHAT_ID)
+#     
+#     # 3. Start Heartbeat in background
+#     asyncio.create_task(registry_heartbeat(Path("SysCache")))
+#     
+#     # (Start your workers here)

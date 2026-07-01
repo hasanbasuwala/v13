@@ -1,18 +1,16 @@
-# app.py
 import asyncio
 from pyrogram import Client, idle
 import config
 
 # Import Handlers & UI
 from core.handlers.commands import register_commands
-from core.handlers.callbacks import register_callbacks
 
 # Import Workers
 from core.workers.download_worker import download_worker
 from core.workers.encode_worker import encode_worker
 from core.workers.upload_worker import upload_worker
 
-# Import Recovery Subsystem
+# Import Recovery Subsystem (assuming these exist in your v13 architecture)
 from core.recovery.cleaner import kill_zombie_processes
 from core.recovery.resume import recover_pending_jobs
 
@@ -33,28 +31,10 @@ async def main():
 
     # 3. Register UI Handlers
     register_commands(app)
-    register_callbacks(app)
 
     # 4. Start Telegram Client
     await app.start()
     print("✅ Pyrogram Client Authenticated and Online.")
-
-    # --- HOT-RELOAD NOTIFICATION BLOCK ---
-    changelog_file = config.BASE_DIR / ".update_changelog"
-    if changelog_file.exists():
-        try:
-            raw_changes = changelog_file.read_text().strip()
-            changelog_file.unlink() # Delete immediately so it won't repeat on next reboot
-            
-            update_text = (
-                "🚀 **Stealth Bot v13.1 Update Successful!**\n"
-                "The core engine is back online and functional.\n\n"
-                "📦 **Git Changelog:**\n"
-                f"`{raw_changes}`"
-            )
-            await app.send_message(chat_id=config.TARGET_CHANNEL_ID, text=update_text)
-        except Exception as e:
-            print(f"⚠️ Failed to broadcast update notification: {e}")
 
     # 5. Recover stranded jobs from previous crashes
     await recover_pending_jobs()
@@ -62,9 +42,9 @@ async def main():
     # 6. Spawn Asynchronous Background Workers
     print("👷 Spawning Subsystem Workers...")
     worker_tasks = [
-        asyncio.create_task(download_worker(worker_id=1)),
-        asyncio.create_task(encode_worker(worker_id=1)),
-        asyncio.create_task(upload_worker(app, worker_id=1))
+        asyncio.create_task(download_worker(app, worker_id=1)), # <-- Passed 'app' here
+        asyncio.create_task(encode_worker(app, worker_id=1)),   # <-- Passed 'app' here
+        asyncio.create_task(upload_worker(app, worker_id=1))    # <-- Passed 'app' here
     ]
 
     print("🛡️ Bot is fully operational. Awaiting links...")
